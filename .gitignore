@@ -1,0 +1,14 @@
+obj/
+bin/
+*.csproj
+*.csproj.user
+*.csproj.vspscc
+*.csproj.vssscc
+*.csproj.vstemplate
+*.csproj.vstemplate.cache
+*.csproj.vstemplate.cache.vspscc
+*.csproj.vstemplate.cache.vssscc
+*.csproj.vstemplate.cache.vstemplate
+*.csproj.vstemplate.cache.vstemplate.cache
+*.csproj.vstemplate.cache.vstemplate.cache.vspscc
+*.csproj.vstemplate.cache.vstemplate.cache.vssscc
