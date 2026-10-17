@@ -1,0 +1,86 @@
+
+# BarotraumaVR
+
+OpenXR VR mod for [Barotrauma](https://store.steampowered.com/app/602960/Barotrauma/). The game keeps its 2D camera and round logic. The headset gets a separate stereo picture with depth, controllers, and a first-person room view.
+
+**Status:** 0.1.0-alpha for Barotrauma **1.13.4.0** (Windows). Expect bugs.
+
+Steam Workshop: *(вставь ссылку после публикации)*  
+Author: [Naduvaha](https://github.com/Naduvaha)
+
+<!-- Support: -->
+
+USDT (TON): UQBDgKC4xn5MfjPmTGZVkVVWJIgDBSL1yRHVq-JGUR82J1Hf
+USDT (ETH): 0x4540D78EDcc4D000b0769d57EbC4087611Aa0c05
+USDT (TRC20): TT8ZYQDwpv54xZjbghtPHHYUZNowYLoEVM
+USDT (SOL): EUQYAvxHLkQFeJ8zRALGpoXz4QBiNawPdLd1jP3dGraj
+https://www.donationalerts.com/r/steyferstaili
+
+## Features
+
+- Stereo OpenXR output (SteamVR, Meta Quest Link, Virtual Desktop, …)
+- Depth on the 2D world: rooms, walls, machines, item thickness
+- HUD composited separately from the stereo world
+- **F10** toggles VR
+- **F9** first person: ortho camera zooms to the hull you are in (not a 3D corridor)
+- In first person the vanilla HUD is hidden; **A** shows it; real UIs (lockers, terminals, health, pause) still open when used
+- PC window mirrors the headset for OBS
+- If SteamVR is already running, the mod binds to it instead of stealing the headset via Meta OpenXR
+
+## Requirements
+
+- Barotrauma 1.13.4.0, Windows
+- [Lua Cs For Barotrauma](https://steamcommunity.com/sharedfiles/filedetails/?id=2559634234)
+- A VR headset and an OpenXR runtime
+
+## Install
+
+1. Subscribe to Lua Cs For Barotrauma, then BarotraumaVR (Workshop) **or** copy `LocalMods/BarotraumaVR` into the game’s `LocalMods` folder.
+2. Main menu → Mods → enable both, Lua Cs above BarotraumaVR.
+3. Restart if asked.
+4. Start a round, put the headset on, press **F10**.
+
+## Controls
+
+Left hand moves the character. Right hand points at the picture like a mouse.
+
+**Keyboard**
+- **F10** — VR on / off
+- **F9** — first person (zoom to your room) / third person diorama
+
+**Left controller**
+- **Stick** — move. Up / down also climb and swim
+- **Stick click** — run
+- **Trigger** — crouch
+- **Grip** — ragdoll
+- **Y** — use / interact
+- **X** — deselect / let go
+
+**Right controller**
+- **Aim** — cursor on the picture
+- **Trigger** — mouse click. Double tap picks the inventory item under the cursor
+- **Grip** — mouse click (same as trigger)
+- **Stick click** — drop item
+- **A** — in first person: show / hide the full vanilla HUD
+- **B** — health window
+
+В F9 ванильный HUD скрыт. **A** возвращает его. Шкафы, терминалы, здоровье, приказы и пауза открываются сами, когда ими пользуешься.
+
+**Клавиатура:** F10 — VR, F9 — первое / третье лицо.  
+**Левый:** стик — ходьба (вверх/вниз лестницы), клик стика — бег, триггер — присед, грип — рэгдолл, Y — использовать, X — отпустить.  
+**Правый:** прицел — курсор, триггер — клик (двойной — слот инвентаря), грип — тоже клик, клик стика — выбросить, A — HUD в F9, B — здоровье.
+
+## Tips
+
+- Start SteamVR / your OpenXR app **before** F10.
+- Quit Barotrauma **and** DedicatedServer before replacing DLLs, or the files stay locked.
+- Client-side picture only. The round is still normal 2D Barotrauma.
+
+## Repo layout
+
+```
+VRDevep/BarotraumaVR/     source (C# core, OpenXR native bridge)
+LocalMods/BarotraumaVR/   playable mod package (what Workshop uploads)
+```
+
+## License: MIT
