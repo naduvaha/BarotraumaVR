@@ -174,16 +174,23 @@ namespace BarotraumaVR
             {
                 RestoreGameHud();
                 RestoreLocalCamera();
+                VrDepth.Multiplier = 1f;
+                VrDepth.ClearPan();
                 VRManager.Log("[VrFirstPerson] 2D diorama");
             }
             else
-                VRManager.Log("[VrFirstPerson] First person: 2D view of the character's room. Press A for the vanilla HUD");
+            {
+                VrDepth.Multiplier = 1.9f;
+                VRManager.Log("[VrFirstPerson] First person: 3D volume with head parallax. Press A for the vanilla HUD");
+            }
         }
 
         public static void OnVrDisabled()
         {
             RestoreGameHud();
             RestoreLocalCamera();
+            VrDepth.Multiplier = 1f;
+            VrDepth.ClearPan();
             wanted = false;
             hasHead = false;
             loggedOn = false;
@@ -218,6 +225,7 @@ namespace BarotraumaVR
             if (!wanted || !VRManager.IsVRActive)
             {
                 RestoreLocalCamera();
+                VrDepth.ClearPan();
                 return;
             }
             try
@@ -245,7 +253,7 @@ namespace BarotraumaVR
                 if (!loggedOn)
                 {
                     loggedOn = true;
-                    VRManager.Log("[VrFirstPerson] 2D view limited to the character's room");
+                    VRManager.Log("[VrFirstPerson] 3D volume: camera rides the head, layers parallax by depth");
                 }
             }
             catch (Exception ex)
@@ -354,6 +362,8 @@ namespace BarotraumaVR
 
         public static bool HideOwnBody(object __instance)
         {
+            // The player's own character stays visible in first person
+            // (looking down at yourself like in CasualtyVR).
             return true;
         }
 
@@ -403,14 +413,31 @@ namespace BarotraumaVR
             camType.GetProperty("OffsetAmount")?.SetValue(cam, 0f);
             camType.GetField("targetZoom", BindingFlags.NonPublic | BindingFlags.Instance)?.SetValue(cam, zoom);
 
+            // Head parallax: the tracked head pans the camera inside the room.
+            // The pan is what makes layers at different depths visibly separate;
+            // VrDepth.PanShift turns it into per-layer compensation.
+            float panX = 0f;
+            float panY = 0f;
+            XrBridge.bvr_xr_get_input(out var input);
+            if (input.Focused != 0 && VRManager.StereoReady && VrStereoRenderer.HeadViewValid)
+            {
+                var v = VrStereoRenderer.CenterEye;
+                panX = Math.Clamp(v.X, -0.5f, 0.5f) * HeadPanUnits;
+                panY = Math.Clamp(v.Y, -0.4f, 0.4f) * HeadPanUnits;
+            }
+
+            float camX = headX + panX;
+            float camY = headY + panY;
+            VrDepth.SetPan(panX, panY, zoom);
+
             PropertyInfo? posProp = camType.GetProperty("Position");
             object? current = posProp?.GetValue(cam);
             if (current != null && posProp != null)
             {
                 var vecType = current.GetType();
                 object world = vecType.GetConstructor(new[] { typeof(float), typeof(float) }) is ConstructorInfo ctor
-                    ? ctor.Invoke(new object[] { headX, headY })
-                    : MakeVec(vecType, headX, headY);
+                    ? ctor.Invoke(new object[] { camX, camY })
+                    : MakeVec(vecType, camX, camY);
                 posProp.SetValue(cam, world);
             }
 
@@ -443,11 +470,8 @@ namespace BarotraumaVR
 
         public static bool HideInteractionFront(object __instance)
         {
-            if (!Active)
-                return true;
-            if (!HudVisible)
-                return false;
-            return HideOwnBody(__instance);
+            // Nothing is hidden from the eyes; DrawFront draws as vanilla.
+            return true;
         }
 
         public static void HideGameHud()
@@ -489,6 +513,7 @@ namespace BarotraumaVR
 
         public static bool HideOwnLimb(object __instance)
         {
+            // All limbs stay visible: the player sees their own body in VR.
             return true;
         }
 
@@ -578,6 +603,12 @@ namespace BarotraumaVR
         }
 
         private static object? Controlled() => controlledProp?.GetValue(null);
+
+        /// <summary>
+        /// How many game units the camera travels per metre of head motion.
+        /// The character is ~5 units tall; 6 units/m keeps a lean inside the room.
+        /// </summary>
+        private const float HeadPanUnits = 6f;
 
         private static void SampleHudButton()
         {

@@ -42,6 +42,142 @@ namespace BarotraumaVR
 
         public static int DrawWalls(object spriteBatch, object cam) => Safe(spriteBatch, cam, DrawRims);
 
+        /// <summary>
+        /// First-person corridor, CasualtyVR-style: everything in the view that
+        /// lies outside the character's hull is closed off with near-side hull
+        /// walls (both the left and the right side of the view), so the room
+        /// reads as a box instead of showing the cave through its edges. The
+        /// panels are drawn inside the game's own world batch, offset to a
+        /// front depth so they sit nearer than the room itself in stereo.
+        /// </summary>
+        private const float FrontWallDepth = 0.18f;
+        private static int corridorEye = -2;
+        private static object? wallSprite;
+        private static bool wallSpriteSearched;
+
+        public static void DrawCorridor(object __instance, object spriteBatch, object cam)
+        {
+            if (!VrFirstPerson.Active || !VRManager.IsVRActive)
+                return;
+            int eye = VrSpriteBatchPatch.CurrentEye;
+            if (eye < 0 || eye > 1 || eye == corridorEye)
+                return;
+            corridorEye = eye;
+
+            try
+            {
+                if (!Ensure(spriteBatch))
+                    return;
+
+                var character = Find("Barotrauma.Character")?.GetProperty("Controlled", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                object? hull = character?.GetType().GetField("CurrentHull", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(character)
+                    ?? character?.GetType().GetProperty("CurrentHull", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(character);
+                if (hull == null || !TryRect(hull, out float x, out float y, out float w, out float h))
+                    return;
+
+                GetView(cam, out float cx, out float cy, out float halfW, out float halfH);
+                float zoom = 1f;
+                object? z = cam.GetType().GetProperty("Zoom")?.GetValue(cam);
+                if (z != null)
+                    zoom = Math.Max(0.05f, Convert.ToSingle(z));
+
+                object? sprite = FindWallSprite();
+                object? tint = Dim(white, 0.62f);
+
+                // The batch already shifts the world by the Hull plane; drawing the
+                // panel at this world offset lands it on the front depth plane.
+                float dx = (VrDepth.Shift(eye, FrontWallDepth) + VrDepth.PanShiftX(FrontWallDepth)
+                            - VrDepth.Shift(eye, VrDepth.Hull) - VrDepth.PanShiftX(VrDepth.Hull)) / zoom;
+
+                float viewLeft = cx - halfW - 100f;
+                float viewRight = cx + halfW + 100f;
+                float viewTop = cy + halfH + 100f;
+                float viewBottom = cy - halfH - 100f;
+                float viewH = viewTop - viewBottom;
+
+                void Panel(float px, float py, float pw, float ph)
+                {
+                    if (pw <= 1f || ph <= 1f)
+                        return;
+                    if (sprite != null)
+                        Tile(spriteBatch, sprite, px + dx, py, pw, ph, tint);
+                    else
+                        FillRect(spriteBatch, px + dx, py, pw, ph, tint);
+                }
+
+                // Side walls: from the hull's edges out to the edges of the view.
+                if (viewLeft < x)
+                    Panel(viewLeft, viewTop, x - viewLeft, viewH);
+                if (viewRight > x + w)
+                    Panel(x + w, viewTop, viewRight - x - w, viewH);
+                // Above the ceiling and below the floor.
+                if (viewTop > y)
+                    Panel(x, viewTop, w, viewTop - y);
+                if (viewBottom < y - h)
+                    Panel(x, y - h, w, y - h - viewBottom);
+
+                // Crisp boundary where the near wall meets the room.
+                Stroke(spriteBatch, x + dx, y, w, h, outlineDark);
+
+                if (!loggedCorridor)
+                {
+                    loggedCorridor = true;
+                    VRManager.Log($"[VrHullExtrude] Corridor walls close the view outside the room {(sprite != null ? "tiled" : "flat")} d={FrontWallDepth:0.00}");
+                }
+            }
+            catch (Exception ex)
+            {
+                failed = true;
+                VRManager.Log($"[VrHullExtrude] Corridor failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private static bool loggedCorridor;
+
+        private static object? FindWallSprite()
+        {
+            if (wallSprite != null || wallSpriteSearched)
+                return wallSprite;
+            wallSpriteSearched = true;
+
+            var structureType = Find("Barotrauma.Structure");
+            var mapEntityType = Find("Barotrauma.MapEntity");
+            object? list = mapEntityType?.GetField("MapEntityList", BindingFlags.Public | BindingFlags.Static)?.GetValue(null)
+                ?? structureType?.GetField("WallList", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            if (list is IEnumerable entities && structureType != null)
+            {
+                foreach (var entity in entities)
+                {
+                    if (entity == null || !structureType.IsInstanceOfType(entity))
+                        continue;
+                    var type = entity.GetType();
+                    if (type.GetProperty("Removed")?.GetValue(entity) is true)
+                        continue;
+                    if (type.GetProperty("Submarine")?.GetValue(entity) == null)
+                        continue;
+                    if (type.GetProperty("HasBody")?.GetValue(entity) is not true)
+                        continue;
+                    object? s = type.GetProperty("Sprite")?.GetValue(entity);
+                    if (s != null)
+                    {
+                        wallSprite = s;
+                        break;
+                    }
+                }
+            }
+
+            return wallSprite;
+        }
+
+        private static void FillRect(object spriteBatch, float x, float y, float w, float h, object? color)
+        {
+            if (drawRect == null || color == null)
+                return;
+            object start = vector2Ctor!.Invoke(new object[] { x, -y });
+            object size = vector2Ctor.Invoke(new object[] { w, h });
+            drawRect.Invoke(null, new object[] { spriteBatch, start, size, color, true, 0f, 0f });
+        }
+
         public static void Apply(Harmony harmony)
         {
             if (patched)
@@ -68,7 +204,32 @@ namespace BarotraumaVR
 
         public static void ItemDraw_Prefix(object __instance, object spriteBatch)
         {
+            DrawCorridorFromItem(spriteBatch);
             DrawItemExtra(__instance, spriteBatch, towardCamera: true, outline: false);
+        }
+
+        /// <summary>
+        /// Item.Draw always runs inside the world batch, before the HUD: the
+        /// corridor is painted here, ahead of every item sprite, without a
+        /// stack trace.
+        /// </summary>
+        private static void DrawCorridorFromItem(object spriteBatch)
+        {
+            if (!VrFirstPerson.Active || drawing || failed)
+                return;
+            object? cam = null;
+            try
+            {
+                var screen = Find("Barotrauma.Screen")?.GetProperty("Selected", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                cam = screen?.GetType().GetProperty("Cam")?.GetValue(screen);
+            }
+            catch
+            {
+                return;
+            }
+            if (cam == null)
+                return;
+            DrawCorridor(null!, spriteBatch, cam);
         }
 
         public static void ItemDraw_Postfix(object __instance, object spriteBatch)
@@ -246,8 +407,11 @@ namespace BarotraumaVR
             float cos = MathF.Cos(rot);
             float sin = MathF.Sin(rot);
             int eye = VrSpriteBatchPatch.CurrentEye;
+            // The sprite itself shifts toward the OTHER eye (VrDepth.Shift is
+            // -1 for the left eye): side walls must reach from the sprite to
+            // where this eye sees it, i.e. opposite the sprite's own shift.
             float dir = eye == 0 ? 1f : -1f;
-            float depth = VrDepth.Pixels * 0.85f;
+            float depth = VrDepth.Scale * 0.85f;
             int width = Math.Max(2, (int)(scale * 2.5f));
 
             void Map(float lx, float ly, out float dx, out float dy)

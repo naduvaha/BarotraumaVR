@@ -23,6 +23,11 @@ namespace BarotraumaVR
         private static object? buttonReleased;
         private static object? buttonPressed;
         private static bool loggedPointerError;
+        private static FieldInfo? commandFrame;
+        private static FieldInfo? commandOpening;
+        private static MethodInfo? disableCommandUi;
+        private static MethodInfo? keyHitInput;
+        private static object? commandInput;
 
         public static void Apply(Harmony harmony)
         {
@@ -64,6 +69,7 @@ namespace BarotraumaVR
                 BindMouse(playerInputType);
                 BindStick(harmony);
                 BindWindowActive(harmony);
+                BindCommandToggle(harmony);
                 var prefix = typeof(InputPatches).GetMethod(nameof(Update_Prefix), BindingFlags.Public | BindingFlags.Static);
                 var postfix = typeof(InputPatches).GetMethod(nameof(Update_Postfix), BindingFlags.Public | BindingFlags.Static);
                 harmony.Patch(updateMethod, prefix: new HarmonyMethod(prefix), postfix: new HarmonyMethod(postfix));
@@ -135,6 +141,51 @@ namespace BarotraumaVR
             var postfix = typeof(VrStick).GetMethod(nameof(VrStick.SetState_Postfix), BindingFlags.Public | BindingFlags.Static);
             harmony.Patch(setState, postfix: new HarmonyMethod(postfix));
             VRManager.Log("[BarotraumaVR] Left grip holds ragdoll, left trigger crouches, Y uses, X lets go, right stick click drops");
+        }
+
+        private static void BindCommandToggle(Harmony harmony)
+        {
+            var crew = FindType("Barotrauma.CrewManager");
+            var inputType = FindType("Barotrauma.InputType");
+            var playerInput = FindType("Barotrauma.PlayerInput");
+            if (crew == null || inputType == null || playerInput == null)
+                return;
+
+            commandFrame = crew.GetField("commandFrame", BindingFlags.NonPublic | BindingFlags.Instance);
+            commandOpening = crew.GetField("isOpeningClick", BindingFlags.NonPublic | BindingFlags.Instance);
+            disableCommandUi = crew.GetMethod("DisableCommandUI", BindingFlags.Public | BindingFlags.Instance);
+            commandInput = Enum.Parse(inputType, "Command");
+            keyHitInput = playerInput.GetMethod("KeyHit", BindingFlags.Public | BindingFlags.Static, null, new[] { inputType }, null);
+
+            var create = crew.GetMethod("CreateCommandUI", BindingFlags.NonPublic | BindingFlags.Instance);
+            var update = crew.GetMethod("Update", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(float) }, null);
+            if (create != null)
+                harmony.Patch(create, prefix: new HarmonyMethod(typeof(InputPatches).GetMethod(nameof(CreateCommandUI_Prefix), BindingFlags.Public | BindingFlags.Static)));
+            if (update != null)
+                harmony.Patch(update, postfix: new HarmonyMethod(typeof(InputPatches).GetMethod(nameof(CrewUpdate_Postfix), BindingFlags.Public | BindingFlags.Static)));
+            VRManager.Log("[BarotraumaVR] Command key toggles the order menu off");
+        }
+
+        public static bool CreateCommandUI_Prefix(object __instance)
+        {
+            if (!VRManager.IsVRActive || commandFrame == null || disableCommandUi == null)
+                return true;
+            if (commandFrame.GetValue(__instance) == null)
+                return true;
+            disableCommandUi.Invoke(__instance, null);
+            return false;
+        }
+
+        public static void CrewUpdate_Postfix(object __instance)
+        {
+            if (!VRManager.IsVRActive || commandFrame == null || disableCommandUi == null || keyHitInput == null)
+                return;
+            if (commandFrame.GetValue(__instance) == null)
+                return;
+            if (commandOpening?.GetValue(__instance) is true)
+                return;
+            if (keyHitInput.Invoke(null, new[] { commandInput }) is true)
+                disableCommandUi.Invoke(__instance, null);
         }
 
         private static void BindWindowActive(Harmony harmony)

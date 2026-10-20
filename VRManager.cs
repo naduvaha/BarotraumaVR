@@ -696,6 +696,7 @@ namespace BarotraumaVR
         private static bool hudNeutral;
         private static bool xrPending;
         private static bool xrSubmitted;
+        private static bool loggedHudOverlayFailure;
         private static object? activeScreen;
         private static object? savedPosition;
         private static object? savedPrevPosition;
@@ -910,9 +911,26 @@ namespace BarotraumaVR
                 bool showCursor = VrFirstPerson.Active && !showHud;
                 if (showHud || showCursor)
                 {
-                    VrHud.Capture(__instance, graphics, spriteBatch, cursorOnly: showCursor);
-                    XrBridge.bvr_xr_overlay_hud(0);
-                    XrBridge.bvr_xr_overlay_hud(1);
+                    // The HUD overlay must never take the frame down with it:
+                    // an exception here used to skip release_swapchain, the
+                    // images stayed acquired forever and the headset froze on
+                    // a stale picture. It has its own catch and the swapchains
+                    // are released below regardless.
+                    try
+                    {
+                        VrHud.Capture(__instance, graphics, spriteBatch, cursorOnly: showCursor);
+                        XrBridge.bvr_xr_overlay_hud(0);
+                        XrBridge.bvr_xr_overlay_hud(1);
+                    }
+                    catch (Exception hudEx)
+                    {
+                        if (!loggedHudOverlayFailure)
+                        {
+                            loggedHudOverlayFailure = true;
+                            var inner = hudEx.InnerException ?? hudEx;
+                            VRManager.Log($"[BarotraumaVR] HUD overlay failed (world picture unaffected): {inner.GetType().Name}: {inner.Message}");
+                        }
+                    }
                 }
                 XrBridge.bvr_xr_release_swapchain(0);
                 XrBridge.bvr_xr_release_swapchain(1);

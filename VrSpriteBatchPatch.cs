@@ -262,7 +262,13 @@ namespace BarotraumaVR
                     return null;
 
                 float dx = VrDepth.Shift(currentEyeIndex, layer.Depth);
-                var shifted = CreateXnaMatrix(ReadMatrix(matrixObj) * System.Numerics.Matrix4x4.CreateTranslation(dx, 0f, 0f));
+                // First person: the camera already pans with the head; near layers take
+                // more of the pan back so depth planes separate as the head moves.
+                dx += VrDepth.PanShiftX(layer.Depth);
+                float dy = VrDepth.PanShiftY(layer.Depth);
+                if (dx == 0f && dy == 0f)
+                    return null;
+                var shifted = CreateXnaMatrix(ReadMatrix(matrixObj) * System.Numerics.Matrix4x4.CreateTranslation(dx, dy, 0f));
                 return Activator.CreateInstance(typeof(Nullable<>).MakeGenericType(matrixType), shifted);
             }
             catch (Exception ex)
@@ -380,7 +386,7 @@ namespace BarotraumaVR
                 else if (rank < 50 && label.Contains("DrawObjects", StringComparison.Ordinal))
                     (rank, depth, name) = (50, VrDepth.CaveFar, "CaveBack");
                 else if (rank < 40 && label.Contains("WaterRenderer", StringComparison.Ordinal))
-                    (rank, depth, name) = (40, VrDepth.Water, "Water");
+                    (rank, depth, name) = (40, VrDepth.WaterBack, "Water");
 
                 if (label.Contains("LightManager", StringComparison.Ordinal))
                     light = true;
@@ -402,21 +408,26 @@ namespace BarotraumaVR
                 return new Layer(-1f, name);
 
             int batch = drawMapBatch++;
+            // One plane for the whole solid shell: wall backs, the damageable
+            // hull, interior walls and the characters share one Begin batch with
+            // structures, and front structures follow. If any of these sat at a
+            // different depth, the stereo shift would open seams between the
+            // overlapping sprites of a single wall (walls looked see-through).
             float drawDepth = batch switch
             {
-                0 => 0.40f, // walls behind the crew
-                1 => VrDepth.Hull, // damageable hull
-                2 => VrDepth.Outpost, // outpost drawn behind the sub
-                3 => 0.45f, // back particles
+                0 => VrDepth.Hull,   // wall backs behind the crew
+                1 => VrDepth.Hull,   // damageable hull
+                2 => VrDepth.Hull,   // outpost drawn behind the sub
+                3 => 0.45f,          // back particles
                 4 => 0.45f,
-                5 => VrDepth.Crew, // closer structures and characters
-                6 => 0.95f, // deformable characters
-                7 => 0.80f,
-                8 => 0.95f,
-                9 => 0.95f,
-                10 => 1.00f, // structures in front of the water
-                11 => 1.00f,
-                _ => 1.05f
+                5 => VrDepth.Hull,   // interior structures and characters (one batch)
+                6 => VrDepth.Hull,   // deformable characters
+                7 => VrDepth.Hull,
+                8 => VrDepth.Hull,
+                9 => VrDepth.Hull,
+                10 => VrDepth.Hull,  // structures in front of the water
+                11 => VrDepth.Hull,
+                _ => VrDepth.Hull
             };
             return new Layer(drawDepth, "DrawMap#" + batch);
         }

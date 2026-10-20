@@ -141,8 +141,9 @@ namespace BarotraumaVR
                 if (savedShader == null)
                     return;
 
-                float dx = VrDepth.Shift(eye, TextureDepth);
-                object translation = createTranslation.Invoke(null, new object[] { dx, 0f, 0f })!;
+                float dx = VrDepth.Shift(eye, TextureDepth) + VrDepth.PanShiftX(TextureDepth);
+                float dy = VrDepth.PanShiftY(TextureDepth);
+                object translation = createTranslation.Invoke(null, new object[] { dx, dy, 0f })!;
                 shaderField.SetValue(cam, multiply.Invoke(null, new[] { savedShader, translation }));
             }
             catch (Exception ex)
@@ -351,7 +352,10 @@ namespace BarotraumaVR
             }
 
             if (!loggedReady)
+            {
+                loggedReady = true;
                 VRManager.Log($"[VrWallDepth] Hull structures in view body={bodySeen} background={bgSeen} hidden={skippedHidden}");
+            }
 
             return drawn;
         }
@@ -756,6 +760,7 @@ namespace BarotraumaVR
 
             if (!loggedReady)
             {
+                loggedReady = true;
                 VRManager.Log($"[VrWallDepth] cam=({cx:0},{cy:0}) view=±{halfW:0}x{halfH:0} screen={screenW}x{screenH} nearestWithT={Fmt(minWith)} nearestNoT={Fmt(minWithout)}");
             }
 

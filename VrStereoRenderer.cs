@@ -22,6 +22,13 @@ namespace BarotraumaVR
         private static int renderEyeLogCount = 0;
         private static Matrix4x4 dioramaWorld;
 
+        /// <summary>
+        /// Midpoint of the two eye positions (the head), in tracking space,
+        /// for first-person camera parallax.
+        /// </summary>
+        public static System.Numerics.Vector3 CenterEye { get; private set; }
+        public static bool HeadViewValid { get; private set; }
+
         // Render targets for each eye (Phase 2.3)
         private static object? leftEyeTarget;
         private static object? rightEyeTarget;
@@ -181,6 +188,18 @@ namespace BarotraumaVR
         {
             currentFrame = frame;
             frameReady = frame.ViewsValid != 0 && frame.ShouldRender != 0;
+
+            if (frame.Views != null && frame.Views.Length >= 2)
+            {
+                var a = frame.Views[0].Position;
+                var b = frame.Views[1].Position;
+                CenterEye = new System.Numerics.Vector3((a.X + b.X) * 0.5f, (a.Y + b.Y) * 0.5f, (a.Z + b.Z) * 0.5f);
+                HeadViewValid = frame.ViewsValid != 0;
+            }
+            else
+            {
+                HeadViewValid = false;
+            }
 
             // Log first frame for debugging
             if (loggedFirstFrame == false && frameReady)
